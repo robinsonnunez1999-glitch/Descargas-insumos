@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Control de Bodega — Insumos y Medicina</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#F6F4EE;
+    --surface:#FFFFFF;
+    --ink:#1E2A22;
+    --ink-soft:#5B6459;
+    --border:#E4DFD2;
+    --brand:#2F5233;
+    --brand-dark:#1F3A24;
+    --brand-soft:#E4EBE0;
+    --insumo:#B8722E;
+    --insumo-soft:#F5E7D6;
+    --medicina:#2E6F77;
+    --medicina-soft:#DCEBEC;
+    --maternidad:#A6555F;
+    --maternidad-soft:#F3E1E3;
+    --crecimiento:#5C7A3A;
+    --crecimiento-soft:#E6EDDC;
+    --danger:#B23A34;
+    --radius:10px;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  header.app-header{
+    background:var(--brand-dark);
+    color:#F3F1E9;
+    padding:18px 20px 0 20px;
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+  .app-header h1{
+    margin:0 0 4px 0;
+    font-size:1.15rem;
+    font-weight:700;
+    letter-spacing:0.2px;
+  }
+  .app-header .sub{
+    margin:0 0 14px 0;
+    font-size:0.8rem;
+    color:#C7CFC2;
+  }
+  nav.tabs{
+    display:flex;
+    gap:4px;
+  }
+  nav.tabs button{
+    background:transparent;
+    border:none;
+    color:#C7CFC2;
+    font-size:0.92rem;
+    font-weight:600;
+    padding:12px 16px;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    border-radius:0;
+  }
+  nav.tabs button.active{
+    color:#FFFFFF;
+    border-bottom:3px solid #FFFFFF;
+  }
+  main{
+    max-width:920px;
+    margin:0 auto;
+    padding:20px 16px 80px 16px;
+  }
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+  }
+  .panel h2{
+    margin:0 0 14px 0;
+    font-size:1.02rem;
+    font-weight:700;
+    color:var(--brand-dark);
+  }
+  .field{
+    margin-bottom:14px;
+  }
+  .field label{
+    display:block;
+    font-size:0.8rem;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  input[type=text], input[type=number], input[type=date], select{
+    width:100%;
+    padding:11px 12px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    font-size:1rem;
+    background:#FCFBF8;
+    color:var(--ink);
+  }
+  input:focus, select:focus, button:focus-visible{
+    outline:2px solid var(--brand);
+    outline-offset:1px;
+  }
+  .search-wrap{position:relative;}
+  .search-results{
+    position:absolute;
+    left:0; right:0; top:100%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-top:none;
+    border-radius:0 0 8px 8px;
+    max-height:260px;
+    overflow-y:auto;
+    z-index:10;
+    box-shadow:0 6px 14px rgba(0,0,0,0.08);
+  }
+  .search-results div{
+    padding:10px 12px;
+    cursor:pointer;
+    border-bottom:1px solid var(--border);
+    font-size:0.92rem;
+  }
+  .search-results div:hover, .search-results div.hi{
+    background:var(--brand-soft);
+  }
+  .search-results .code{
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:0.76rem;
+    color:var(--ink-soft);
+    margin-right:6px;
+  }
+  .selected-product{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    background:var(--brand-soft);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px;
+    margin-top:8px;
+  }
+  .selected-product .name{font-weight:600;}
+  .selected-product .code{
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:0.76rem;
+    color:var(--ink-soft);
+  }
+  .badge{
+    display:inline-block;
+    font-size:0.72rem;
+    font-weight:700;
+    padding:3px 9px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .badge.insumo{background:var(--insumo-soft); color:var(--insumo);}
+  .badge.medicina{background:var(--medicina-soft); color:var(--medicina);}
+  .badge.maternidad{background:var(--maternidad-soft); color:var(--maternidad);}
+  .badge.crecimiento{background:var(--crecimiento-soft); color:var(--crecimiento);}
+  .qty-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .qty-row button{
+    width:44px; height:44px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:#FCFBF8;
+    font-size:1.3rem;
+    font-weight:700;
+    cursor:pointer;
+    color:var(--brand-dark);
+  }
+  .qty-row input{
+    text-align:center;
+    font-size:1.1rem;
+    font-weight:700;
+  }
+  .site-toggle{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .site-toggle button{
+    padding:16px 10px;
+    border-radius:8px;
+    border:2px solid var(--border);
+    background:#FCFBF8;
+    font-weight:700;
+    font-size:0.95rem;
+    cursor:pointer;
+    color:var(--ink);
+  }
+  .site-toggle button .tiny{
+    display:block;
+    font-weight:500;
+    font-size:0.72rem;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+  .site-toggle button.sel-maternidad{
+    border-color:var(--maternidad);
+    background:var(--maternidad-soft);
+    color:var(--maternidad);
+  }
+  .site-toggle button.sel-crecimiento{
+    border-color:var(--crecimiento);
+    background:var(--crecimiento-soft);
+    color:var(--crecimiento);
+  }
+  .btn-primary{
+    width:100%;
+    padding:14px;
+    background:var(--brand);
+    color:#fff;
+    border:none;
+    border-radius:8px;
+    font-size:1rem;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .btn-primary:disabled{
+    background:#B9C2B2;
+    cursor:not-allowed;
+  }
+  .btn-secondary{
+    padding:10px 14px;
+    background:#FCFBF8;
+    color:var(--brand-dark);
+    border:1px solid var(--border);
+    border-radius:8px;
+    font-size:0.88rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:0.88rem;
+  }
+  th{
+    text-align:left;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    color:var(--ink-soft);
+    border-bottom:2px solid var(--border);
+    padding:8px 6px;
+  }
+  td{
+    padding:9px 6px;
+    border-bottom:1px solid var(--border);
+    vertical-align:middle;
+  }
+  tr:last-child td{border-bottom:none;}
+  .row-del{
+    background:none;
+    border:none;
+    color:var(--danger);
+    font-weight:700;
+    cursor:pointer;
+    font-size:0.85rem;
+  }
+  .empty-state{
+    text-align:center;
+    color:var(--ink-soft);
+    padding:26px 10px;
+    font-size:0.9rem;
+  }
+  .filters-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .filters-grid .full{grid-column:1 / -1;}
+  .report-section{margin-bottom:20px;}
+  .report-section h3{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:0.95rem;
+    margin:0 0 8px 0;
+  }
+  .cat-block{margin-bottom:14px;}
+  .cat-block h4{
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    margin:0 0 6px 0;
+    color:var(--ink-soft);
+  }
+  .toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+  }
+  .toolbar input[type=text]{max-width:260px;}
+  .new-product-form{
+    display:grid;
+    grid-template-columns:1fr 2fr auto;
+    gap:10px;
+    align-items:end;
+    margin-bottom:16px;
+  }
+  .cat-choice{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .cat-choice button{
+    flex:1;
+    padding:9px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:#FCFBF8;
+    font-weight:600;
+    font-size:0.85rem;
+    cursor:pointer;
+  }
+  .cat-choice button.sel-ins{border-color:var(--insumo); background:var(--insumo-soft); color:var(--insumo);}
+  .cat-choice button.sel-med{border-color:var(--medicina); background:var(--medicina-soft); color:var(--medicina);}
+  .hint{font-size:0.78rem; color:var(--ink-soft); margin-top:4px;}
+  .pendientes-resumen{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  .pendientes-resumen .chip{
+    font-size:0.8rem;
+    font-weight:700;
+    padding:7px 12px;
+    border-radius:20px;
+    background:var(--brand-soft);
+    color:var(--brand-dark);
+  }
+  .pendientes-resumen .chip.alert{
+    background:#F7E3D8;
+    color:var(--danger);
+  }
+  table.detalle td, table.detalle th{font-size:0.83rem;}
+  .obs-input{
+    width:100%;
+    padding:6px 8px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    font-size:0.8rem;
+    background:#FCFBF8;
+  }
+  .chk-descargado{
+    width:19px; height:19px;
+    cursor:pointer;
+  }
+  tr.fila-pendiente td{background:#FBF3EC;}
+  tr.fila-total td{
+    border-top:2px solid var(--border);
+    font-weight:700;
+    background:#FAF8F2;
+  }
+  .chip-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:12px;
+  }
+  .chip-list .chip-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--brand-soft);
+    color:var(--brand-dark);
+    padding:6px 8px 6px 12px;
+    border-radius:20px;
+    font-size:0.85rem;
+    font-weight:600;
+  }
+  .chip-list .chip-item button{
+    background:none;
+    border:none;
+    color:var(--danger);
+    font-weight:700;
+    cursor:pointer;
+    font-size:0.9rem;
+    line-height:1;
+  }
+  .toast{
+    position:fixed;
+    bottom:20px;
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--brand-dark);
+    color:#fff;
+    padding:11px 18px;
+    border-radius:8px;
+    font-size:0.88rem;
+    font-weight:600;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s ease;
+    z-index:50;
+  }
+  .toast.show{opacity:1;}
+  @media (max-width:520px){
+    .filters-grid{grid-template-columns:1fr;}
+    .new-product-form{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Control de Bodega</h1>
+  <p class="sub">Insumos y medicina — Granja Maternidad · Granja Crecimiento</p>
+  <nav class="tabs">
+    <button data-tab="registro" class="active">Registro</button>
+    <button data-tab="reporte">Reporte</button>
+    <button data-tab="descargas">Descargas</button>
+    <button data-tab="productos">Productos</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===================== REGISTRO ===================== -->
+  <section id="tab-registro">
+    <div class="panel">
+      <h2>Registrar salida</h2>
+
+      <div class="field search-wrap">
+        <label for="buscarProducto">Producto</label>
+        <input type="text" id="buscarProducto" placeholder="Escribe el código o el nombre del producto" autocomplete="off">
+        <div class="search-results" id="searchResults" style="display:none;"></div>
+      </div>
+
+      <div id="selectedProductBox"></div>
+
+      <div class="field" style="margin-top:16px;">
+        <label>Cantidad</label>
+        <div class="qty-row">
+          <button type="button" id="qtyMinus">−</button>
+          <input type="number" id="cantidad" min="1" value="1">
+          <button type="button" id="qtyPlus">+</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Bodega de destino</label>
+        <div class="site-toggle">
+          <button type="button" id="btnMaternidad" data-site="maternidad">
+            Maternidad
+            <span class="tiny">Sitio 1</span>
+          </button>
+          <button type="button" id="btnCrecimiento" data-site="crecimiento">
+            Crecimiento
+            <span class="tiny">Sitio 2 y 3</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="responsable">Entregado a / responsable (opcional)</label>
+        <input type="text" id="responsable" list="datalistResponsables" placeholder="Nombre de quien retira el producto" autocomplete="off">
+        <datalist id="datalistResponsables"></datalist>
+      </div>
+
+      <button class="btn-primary" id="btnRegistrar" disabled>Registrar salida</button>
+    </div>
+
+    <div class="panel">
+      <h2>Movimientos de hoy</h2>
+      <div id="movimientosHoy"></div>
+    </div>
+  </section>
+
+  <!-- ===================== REPORTE (lista diaria por sitio) ===================== -->
+  <section id="tab-reporte" style="display:none;">
+    <div class="panel">
+      <h2>Lista diaria</h2>
+      <div class="field" style="max-width:220px;">
+        <label for="listaFecha">Fecha</label>
+        <input type="date" id="listaFecha">
+      </div>
+      <p class="hint">Muestra todo lo que salió ese día, separado por sitio (Maternidad / Crecimiento), sin importar si es insumo o medicina.</p>
+    </div>
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0;">Resultado del día</h2>
+        <button class="btn-secondary" id="btnExportCsvLista">Exportar CSV</button>
+      </div>
+      <div id="listaDiariaContenido"></div>
+    </div>
+  </section>
+
+  <!-- ===================== DESCARGAS ===================== -->
+  <section id="tab-descargas" style="display:none;">
+    <div class="panel">
+      <h2>Filtrar descargas</h2>
+      <div class="filters-grid">
+        <div class="field">
+          <label for="fDesde">Desde</label>
+          <input type="date" id="fDesde">
+        </div>
+        <div class="field">
+          <label for="fHasta">Hasta</label>
+          <input type="date" id="fHasta">
+        </div>
+        <div class="field">
+          <label for="fBodega">Bodega</label>
+          <select id="fBodega">
+            <option value="todas">Todas las bodegas</option>
+            <option value="maternidad">Maternidad (sitio 1)</option>
+            <option value="crecimiento">Crecimiento (sitio 2 y 3)</option>
+          </select>
+        </div>
+        <div class="field search-wrap">
+          <label for="fProducto">Producto (opcional)</label>
+          <input type="text" id="fProducto" placeholder="Todos los productos" autocomplete="off">
+          <div class="search-results" id="fProductoResults" style="display:none;"></div>
+        </div>
+      </div>
+      <button class="btn-primary" id="btnGenerarReporte">Generar reporte</button>
+    </div>
+
+    <div class="panel" id="reportePanel" style="display:none;">
+      <div class="toolbar">
+        <h2 style="margin:0;">Resultado</h2>
+        <button class="btn-secondary" id="btnExportCsv">Exportar CSV</button>
+      </div>
+      <div id="reporteResumenPendientes"></div>
+      <div id="reporteContenido"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PRODUCTOS ===================== -->
+  <section id="tab-productos" style="display:none;">
+    <div class="panel">
+      <h2>Responsables / personas autorizadas</h2>
+      <div class="new-product-form" style="grid-template-columns:2fr auto;">
+        <div class="field" style="margin-bottom:0;">
+          <label for="nuevoResponsable">Nombre</label>
+          <input type="text" id="nuevoResponsable" placeholder="Nombre de la persona">
+        </div>
+        <button class="btn-secondary" id="btnAgregarResponsable" style="height:45px;">Agregar</button>
+      </div>
+      <div id="listaResponsables"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Agregar producto</h2>
+      <div class="cat-choice">
+        <button type="button" id="catInsBtn" class="sel-ins">+ Nuevo insumo</button>
+        <button type="button" id="catMedBtn">+ Nueva medicina</button>
+      </div>
+      <div class="new-product-form">
+        <div class="field" style="margin-bottom:0;">
+          <label for="nuevoCodigo">Código</label>
+          <input type="text" id="nuevoCodigo" placeholder="INS-A00063">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="nuevaDescripcion">Descripción</label>
+          <input type="text" id="nuevaDescripcion" placeholder="Nombre del producto">
+        </div>
+        <button class="btn-secondary" id="btnAgregarProducto" style="height:45px;">Agregar</button>
+      </div>
+      <p class="hint">El código sugerido sigue la numeración del catálogo. Los códigos que empiezan con INS son insumos y los que empiezan con MED son medicina.</p>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0;">Catálogo de productos (<span id="totalProductos">0</span>)</h2>
+        <input type="text" id="buscarCatalogo" placeholder="Buscar por código o nombre">
+      </div>
+      <div style="max-height:480px; overflow-y:auto;">
+        <table>
+          <thead>
+            <tr><th>Código</th><th>Descripción</th><th>Categoría</th><th></th></tr>
+          </thead>
+          <tbody id="catalogoBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ======================= DATOS INICIALES ======================= */
+const PRODUCTOS_INICIALES = __PRODUCTOS_JSON__;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAzoh4UHDyXVt7lpK82NhSanBs6u89j2U8",
+  authDomain: "galpon-reemplazos.firebaseapp.com",
+  projectId: "galpon-reemplazos",
+  storageBucket: "galpon-reemplazos.firebasestorage.app",
+  messagingSenderId: "33289343335",
+  appId: "1:33289343335:web:5efd5550b7745be1645fc2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const COL = {
+  productos: 'bodega_productos',
+  movimientos: 'bodega_movimientos',
+  responsables: 'bodega_responsables'
+};
+
+function categoriaDeCodigo(codigo){
+  const c = (codigo || '').trim().toUpperCase();
+  if(c.startsWith('MED')) return 'medicina';
+  if(c.startsWith('INS')) return 'insumo';
+  return 'otro';
+}
+
+let productos = [];
+let movimientos = [];
+let responsables = [];
+let productosListos = false;
+let movimientosListos = false;
+let responsablesListos = false;
+
+function refrescarVistaActiva(){
+  if(!productosListos || !movimientosListos) return;
+  renderMovimientosHoy();
+  renderCatalogo();
+  renderReporte();
+  renderListaDiaria();
+}
+
+// --- Productos: escucha en tiempo real, siembra el catalogo inicial la primera vez ---
+db.collection(COL.productos).onSnapshot(async (snap)=>{
+  if(snap.empty && !productosListos){
+    const batch = db.batch();
+    PRODUCTOS_INICIALES.forEach(p=>{
+      const ref = db.collection(COL.productos).doc(p.codigo);
+      batch.set(ref, {codigo: p.codigo, descripcion: p.descripcion, categoria: categoriaDeCodigo(p.codigo)});
+    });
+    await batch.commit();
+    return;
+  }
+  productos = snap.docs.map(d => d.data());
+  productosListos = true;
+  refrescarVistaActiva();
+}, (err)=>{ console.error('productos', err); showToast('No se pudo conectar con la nube'); });
+
+async function agregarProductoRemoto(prod){
+  await db.collection(COL.productos).doc(prod.codigo).set(prod);
+}
+async function eliminarProductoRemoto(codigo){
+  await db.collection(COL.productos).doc(codigo).delete();
+}
+
+// --- Responsables: escucha en tiempo real ---
+db.collection(COL.responsables).onSnapshot((snap)=>{
+  responsables = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,z)=> a.nombre.localeCompare(z.nombre));
+  responsablesListos = true;
+  renderResponsables();
+  renderDatalistResponsables();
+}, (err)=>{ console.error('responsables', err); showToast('No se pudo conectar con la nube'); });
+
+async function agregarResponsableRemoto(nombre){
+  await db.collection(COL.responsables).add({nombre});
+}
+async function eliminarResponsableRemoto(id){
+  await db.collection(COL.responsables).doc(id).delete();
+}
+
+// --- Movimientos: escucha en tiempo real, ordenados del mas reciente al mas antiguo ---
+db.collection(COL.movimientos).orderBy('fechaHora','desc').onSnapshot((snap)=>{
+  movimientos = snap.docs.map(d => d.data());
+  movimientosListos = true;
+  refrescarVistaActiva();
+}, (err)=>{ console.error('movimientos', err); showToast('No se pudo conectar con la nube'); });
+
+async function registrarMovimientoRemoto(mov){
+  await db.collection(COL.movimientos).doc(mov.id).set(mov);
+}
+async function eliminarMovimientoRemoto(id){
+  await db.collection(COL.movimientos).doc(id).delete();
+}
+async function actualizarMovimientoRemoto(id, cambios){
+  await db.collection(COL.movimientos).doc(id).update(cambios);
+}
+
+let productoSeleccionado = null;
+let bodegaSeleccionada = null;
+let categoriaNuevoProducto = 'insumo';
+
+/* ======================= UTILIDADES ======================= */
+function hoyISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function horaLegible(iso){
+  const d = new Date(iso);
+  return d.toLocaleTimeString('es-EC', {hour:'2-digit', minute:'2-digit'});
+}
+function fechaLegible(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-EC', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 1800);
+}
+function nombreBodega(b){
+  return b === 'maternidad' ? 'Maternidad' : (b === 'crecimiento' ? 'Crecimiento' : b);
+}
+function nombreCategoria(c){
+  return c === 'medicina' ? 'Medicina' : (c === 'insumo' ? 'Insumo' : c);
+}
+
+/* ======================= TABS ======================= */
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    ['registro','reporte','descargas','productos'].forEach(t=>{
+      document.getElementById('tab-'+t).style.display = (t === btn.dataset.tab) ? 'block' : 'none';
+    });
+    if(btn.dataset.tab === 'productos'){ renderCatalogo(); renderResponsables(); }
+    if(btn.dataset.tab === 'registro') renderMovimientosHoy();
+    if(btn.dataset.tab === 'reporte') renderListaDiaria();
+  });
+});
+
+/* ======================= BUSCADOR DE PRODUCTOS (REGISTRO) ======================= */
+const buscarProductoInput = document.getElementById('buscarProducto');
+const searchResults = document.getElementById('searchResults');
+
+buscarProductoInput.addEventListener('input', ()=>{
+  const q = buscarProductoInput.value.trim().toLowerCase();
+  if(!q){ searchResults.style.display='none'; searchResults.innerHTML=''; return; }
+  const matches = productos.filter(p =>
+    p.codigo.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q)
+  ).slice(0, 25);
+  if(matches.length === 0){
+    searchResults.innerHTML = '<div style="color:var(--ink-soft); cursor:default;">Sin resultados</div>';
+    searchResults.style.display = 'block';
+    return;
+  }
+  searchResults.innerHTML = matches.map(p =>
+    `<div data-codigo="${p.codigo}"><span class="code">${p.codigo}</span>${p.descripcion} <span class="badge ${p.categoria}" style="margin-left:6px;">${nombreCategoria(p.categoria)}</span></div>`
+  ).join('');
+  searchResults.style.display = 'block';
+});
+
+searchResults.addEventListener('click', (e)=>{
+  const row = e.target.closest('div[data-codigo]');
+  if(!row) return;
+  const codigo = row.dataset.codigo;
+  const prod = productos.find(p => p.codigo === codigo);
+  if(!prod) return;
+  productoSeleccionado = prod;
+  buscarProductoInput.value = '';
+  searchResults.style.display = 'none';
+  renderSelectedProduct();
+  actualizarBotonRegistrar();
+});
+
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.search-wrap')) searchResults.style.display = 'none';
+});
+
+function renderSelectedProduct(){
+  const box = document.getElementById('selectedProductBox');
+  if(!productoSeleccionado){ box.innerHTML=''; return; }
+  box.innerHTML = `
+    <div class="selected-product">
+      <div>
+        <div class="name">${productoSeleccionado.descripcion}</div>
+        <div class="code">${productoSeleccionado.codigo}</div>
+      </div>
+      <div>
+        <span class="badge ${productoSeleccionado.categoria}">${nombreCategoria(productoSeleccionado.categoria)}</span>
+        <button type="button" class="row-del" id="quitarProducto" style="margin-left:8px;">Quitar</button>
+      </div>
+    </div>`;
+  document.getElementById('quitarProducto').addEventListener('click', ()=>{
+    productoSeleccionado = null;
+    renderSelectedProduct();
+    actualizarBotonRegistrar();
+  });
+}
+
+/* ======================= CANTIDAD ======================= */
+const cantidadInput = document.getElementById('cantidad');
+document.getElementById('qtyMinus').addEventListener('click', ()=>{
+  cantidadInput.value = Math.max(1, (parseInt(cantidadInput.value)||1) - 1);
+});
+document.getElementById('qtyPlus').addEventListener('click', ()=>{
+  cantidadInput.value = (parseInt(cantidadInput.value)||1) + 1;
+});
+
+/* ======================= BODEGA DESTINO ======================= */
+document.getElementById('btnMaternidad').addEventListener('click', ()=> seleccionarBodega('maternidad'));
+document.getElementById('btnCrecimiento').addEventListener('click', ()=> seleccionarBodega('crecimiento'));
+function seleccionarBodega(b){
+  bodegaSeleccionada = b;
+  document.getElementById('btnMaternidad').classList.toggle('sel-maternidad', b==='maternidad');
+  document.getElementById('btnCrecimiento').classList.toggle('sel-crecimiento', b==='crecimiento');
+  actualizarBotonRegistrar();
+}
+
+function actualizarBotonRegistrar(){
+  document.getElementById('btnRegistrar').disabled = !(productoSeleccionado && bodegaSeleccionada);
+}
+
+/* ======================= REGISTRAR SALIDA ======================= */
+document.getElementById('btnRegistrar').addEventListener('click', async ()=>{
+  if(!productoSeleccionado || !bodegaSeleccionada) return;
+  const cantidad = Math.max(1, parseInt(cantidadInput.value)||1);
+  const responsable = document.getElementById('responsable').value.trim();
+  const btn = document.getElementById('btnRegistrar');
+  btn.disabled = true;
+  await registrarMovimientoRemoto({
+    id: Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    fechaHora: new Date().toISOString(),
+    codigo: productoSeleccionado.codigo,
+    descripcion: productoSeleccionado.descripcion,
+    categoria: productoSeleccionado.categoria,
+    cantidad,
+    bodega: bodegaSeleccionada,
+    responsable,
+    descargado: false,
+    observacion: ''
+  });
+
+  showToast('Salida registrada');
+  productoSeleccionado = null;
+  bodegaSeleccionada = null;
+  cantidadInput.value = 1;
+  document.getElementById('responsable').value = '';
+  renderSelectedProduct();
+  document.getElementById('btnMaternidad').classList.remove('sel-maternidad');
+  document.getElementById('btnCrecimiento').classList.remove('sel-crecimiento');
+  actualizarBotonRegistrar();
+});
+
+function renderMovimientosHoy(){
+  const cont = document.getElementById('movimientosHoy');
+  const hoy = hoyISO();
+  const deHoy = movimientos.filter(m => m.fechaHora.slice(0,10) === hoy);
+  if(deHoy.length === 0){
+    cont.innerHTML = '<p class="empty-state">Todavía no se han registrado salidas hoy.</p>';
+    return;
+  }
+  cont.innerHTML = `
+    <table class="detalle">
+      <thead><tr><th>Hora</th><th>Producto</th><th>Cant.</th><th>Bodega</th><th>Entregado a</th><th>Descargado</th><th>Observación</th><th></th></tr></thead>
+      <tbody>
+        ${deHoy.map(m => `
+          <tr class="${m.descargado ? '' : 'fila-pendiente'}">
+            <td>${horaLegible(m.fechaHora)}</td>
+            <td>${m.descripcion}<br><span class="badge ${m.categoria}">${nombreCategoria(m.categoria)}</span></td>
+            <td>${m.cantidad}</td>
+            <td><span class="badge ${m.bodega}">${nombreBodega(m.bodega)}</span></td>
+            <td>${m.responsable || '—'}</td>
+            <td style="text-align:center;"><input type="checkbox" class="chk-descargado" data-id="${m.id}" ${m.descargado ? 'checked' : ''}></td>
+            <td><input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}"></td>
+            <td><button class="row-del" data-id="${m.id}">Eliminar</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  cont.querySelectorAll('.row-del').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      await eliminarMovimientoRemoto(b.dataset.id);
+    });
+  });
+  cont.querySelectorAll('.chk-descargado').forEach(chk=>{
+    chk.addEventListener('change', async ()=>{
+      await actualizarMovimientoRemoto(chk.dataset.id, {descargado: chk.checked});
+    });
+  });
+  cont.querySelectorAll('.obs-input').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      await actualizarMovimientoRemoto(inp.dataset.id, {observacion: inp.value});
+    });
+  });
+}
+
+/* ======================= REPORTE ======================= */
+document.getElementById('fDesde').value = hoyISO();
+document.getElementById('fHasta').value = hoyISO();
+
+let ultimoReporte = null;
+let productoFiltroReporte = null; // {codigo, descripcion} o null = todos
+
+const fProductoInput = document.getElementById('fProducto');
+const fProductoResults = document.getElementById('fProductoResults');
+
+fProductoInput.addEventListener('input', ()=>{
+  const q = fProductoInput.value.trim().toLowerCase();
+  productoFiltroReporte = null;
+  if(!q){ fProductoResults.style.display='none'; return; }
+  const matches = productos.filter(p =>
+    p.codigo.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q)
+  ).slice(0, 25);
+  fProductoResults.innerHTML = matches.length
+    ? matches.map(p => `<div data-codigo="${p.codigo}"><span class="code">${p.codigo}</span>${p.descripcion}</div>`).join('')
+    : '<div style="color:var(--ink-soft); cursor:default;">Sin resultados</div>';
+  fProductoResults.style.display = 'block';
+});
+fProductoResults.addEventListener('click', (e)=>{
+  const row = e.target.closest('div[data-codigo]');
+  if(!row) return;
+  const prod = productos.find(p => p.codigo === row.dataset.codigo);
+  if(!prod) return;
+  productoFiltroReporte = prod;
+  fProductoInput.value = `${prod.codigo} — ${prod.descripcion}`;
+  fProductoResults.style.display = 'none';
+});
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('#tab-reporte .search-wrap')) fProductoResults.style.display = 'none';
+});
+
+document.getElementById('btnGenerarReporte').addEventListener('click', ()=>{
+  const desde = document.getElementById('fDesde').value;
+  const hasta = document.getElementById('fHasta').value;
+  const bodegaFiltro = document.getElementById('fBodega').value;
+
+  if(!desde || !hasta){ showToast('Selecciona el rango de fechas'); return; }
+
+  const filtrados = movimientos.filter(m=>{
+    const fecha = m.fechaHora.slice(0,10);
+    if(fecha < desde || fecha > hasta) return false;
+    if(bodegaFiltro !== 'todas' && m.bodega !== bodegaFiltro) return false;
+    if(productoFiltroReporte && m.codigo !== productoFiltroReporte.codigo) return false;
+    return true;
+  });
+
+  ultimoReporte = {desde, hasta, bodegaFiltro, ids: filtrados.map(m => m.id)};
+  renderReporte();
+});
+
+function construirAgrupado(lista){
+  // bodega -> categoria -> codigo -> {descripcion, total, movs:[...]}
+  const agrupado = {};
+  lista.forEach(m=>{
+    agrupado[m.bodega] = agrupado[m.bodega] || {};
+    agrupado[m.bodega][m.categoria] = agrupado[m.bodega][m.categoria] || {};
+    const cat = agrupado[m.bodega][m.categoria];
+    if(!cat[m.codigo]) cat[m.codigo] = {descripcion: m.descripcion, total: 0, movs: []};
+    cat[m.codigo].total += m.cantidad;
+    cat[m.codigo].movs.push(m);
+  });
+  return agrupado;
+}
+
+function renderReporte(){
+  const panel = document.getElementById('reportePanel');
+  const cont = document.getElementById('reporteContenido');
+  const resumen = document.getElementById('reporteResumenPendientes');
+  if(!ultimoReporte){ panel.style.display='none'; return; }
+  panel.style.display = 'block';
+
+  // Reconstruir la lista actual de movimientos filtrados a partir de ids (por si cambiaron descargado/observacion)
+  const idsSet = new Set(ultimoReporte.ids);
+  const lista = movimientos.filter(m => idsSet.has(m.id));
+
+  if(lista.length === 0){
+    resumen.innerHTML = '';
+    cont.innerHTML = `<p class="empty-state">No hay salidas registradas con ese filtro entre ${fechaLegible(ultimoReporte.desde)} y ${fechaLegible(ultimoReporte.hasta)}.</p>`;
+    return;
+  }
+
+  const pendientes = lista.filter(m => !m.descargado).length;
+  resumen.innerHTML = `
+    <div class="pendientes-resumen">
+      <span class="chip">${lista.length} movimiento(s) en el rango</span>
+      <span class="chip ${pendientes ? 'alert' : ''}">${pendientes} sin descargar</span>
+      <span class="chip">${lista.length - pendientes} descargado(s)</span>
+    </div>`;
+
+  const agrupado = construirAgrupado(lista);
+  const ordenBodegas = ['maternidad','crecimiento'].filter(b => agrupado[b]);
+
+  cont.innerHTML = ordenBodegas.map(b=>{
+    const cats = agrupado[b];
+    const catsHtml = ['insumo','medicina'].filter(c => cats[c]).map(c=>{
+      const items = Object.values(cats[c]).sort((a,z)=> a.descripcion.localeCompare(z.descripcion));
+      const filasProducto = items.map(it=>{
+        const movsOrdenados = it.movs.slice().sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+        const filasMov = movsOrdenados.map(m => `
+          <tr class="${m.descargado ? '' : 'fila-pendiente'}">
+            <td>${fechaLegible(m.fechaHora)}</td>
+            <td>${m.cantidad}</td>
+            <td>${m.responsable || '—'}</td>
+            <td style="text-align:center;">
+              <input type="checkbox" class="chk-descargado" data-id="${m.id}" ${m.descargado ? 'checked' : ''}>
+            </td>
+            <td><input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}"></td>
+          </tr>`).join('');
+        return `
+          <tr><td colspan="5" style="padding-top:14px; padding-bottom:2px; font-weight:700;">${it.descripcion}</td></tr>
+          ${filasMov}
+          <tr class="fila-total"><td colspan="1">Total</td><td>${it.total}</td><td colspan="3"></td></tr>`;
+      }).join('');
+      return `
+        <div class="cat-block">
+          <h4>${nombreCategoria(c)}</h4>
+          <table class="detalle">
+            <thead><tr><th>Fecha</th><th>Cant.</th><th>Entregado a</th><th>Descargado</th><th>Observación</th></tr></thead>
+            <tbody>${filasProducto}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+    return `
+      <div class="report-section">
+        <h3><span class="badge ${b}">${nombreBodega(b)}</span></h3>
+        ${catsHtml}
+      </div>`;
+  }).join('');
+
+  cont.querySelectorAll('.chk-descargado').forEach(chk=>{
+    chk.addEventListener('change', async ()=>{
+      await actualizarMovimientoRemoto(chk.dataset.id, {descargado: chk.checked});
+    });
+  });
+  cont.querySelectorAll('.obs-input').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      await actualizarMovimientoRemoto(inp.dataset.id, {observacion: inp.value});
+    });
+  });
+}
+
+document.getElementById('btnExportCsv').addEventListener('click', ()=>{
+  if(!ultimoReporte) return;
+  const idsSet = new Set(ultimoReporte.ids);
+  const lista = movimientos.filter(m => idsSet.has(m.id))
+    .slice().sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+  let filas = [['Fecha','Bodega','Categoria','Producto','Cantidad','Entregado a','Descargado','Observacion']];
+  lista.forEach(m=>{
+    filas.push([
+      fechaLegible(m.fechaHora),
+      nombreBodega(m.bodega),
+      nombreCategoria(m.categoria),
+      m.descripcion,
+      m.cantidad,
+      m.responsable || '',
+      m.descargado ? 'Si' : 'No',
+      m.observacion || ''
+    ]);
+  });
+  const csv = filas.map(f => f.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reporte_bodega_${ultimoReporte.desde}_a_${ultimoReporte.hasta}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ======================= PRODUCTOS / CATÁLOGO ======================= */
+function siguienteCodigo(prefijo, letra){
+  const nums = productos
+    .filter(p => p.codigo.toUpperCase().startsWith(prefijo))
+    .map(p => parseInt((p.codigo.match(/(\d+)$/)||[])[1] || '0', 10));
+  const max = nums.length ? Math.max(...nums) : 0;
+  const siguiente = String(max + 1).padStart(5,'0');
+  return `${prefijo}${letra}${siguiente}`;
+}
+
+function actualizarSugerenciaCodigo(){
+  const codigoInput = document.getElementById('nuevoCodigo');
+  if(categoriaNuevoProducto === 'insumo'){
+    codigoInput.value = siguienteCodigo('INS-', 'A');
+  } else {
+    codigoInput.value = siguienteCodigo('MED-', 'R');
+  }
+}
+
+document.getElementById('catInsBtn').addEventListener('click', ()=>{
+  categoriaNuevoProducto = 'insumo';
+  document.getElementById('catInsBtn').classList.add('sel-ins');
+  document.getElementById('catMedBtn').classList.remove('sel-med');
+  actualizarSugerenciaCodigo();
+});
+document.getElementById('catMedBtn').addEventListener('click', ()=>{
+  categoriaNuevoProducto = 'medicina';
+  document.getElementById('catMedBtn').classList.add('sel-med');
+  document.getElementById('catInsBtn').classList.remove('sel-ins');
+  actualizarSugerenciaCodigo();
+});
+actualizarSugerenciaCodigo();
+
+document.getElementById('btnAgregarProducto').addEventListener('click', async ()=>{
+  const codigo = document.getElementById('nuevoCodigo').value.trim().toUpperCase();
+  const descripcion = document.getElementById('nuevaDescripcion').value.trim();
+  if(!codigo || !descripcion){ showToast('Completa código y descripción'); return; }
+  if(!codigo.startsWith('INS') && !codigo.startsWith('MED')){
+    showToast('El código debe empezar con INS o MED'); return;
+  }
+  if(productos.some(p => p.codigo.toUpperCase() === codigo)){
+    showToast('Ese código ya existe'); return;
+  }
+  await agregarProductoRemoto({codigo, descripcion, categoria: categoriaDeCodigo(codigo)});
+  document.getElementById('nuevaDescripcion').value = '';
+  actualizarSugerenciaCodigo();
+  showToast('Producto agregado');
+});
+
+document.getElementById('buscarCatalogo').addEventListener('input', renderCatalogo);
+
+function renderCatalogo(){
+  const q = document.getElementById('buscarCatalogo').value.trim().toLowerCase();
+  const lista = productos.filter(p =>
+    !q || p.codigo.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q)
+  ).sort((a,z)=> a.codigo.localeCompare(z.codigo));
+
+  document.getElementById('totalProductos').textContent = productos.length;
+
+  const body = document.getElementById('catalogoBody');
+  if(lista.length === 0){
+    body.innerHTML = `<tr><td colspan="4" class="empty-state">Sin resultados</td></tr>`;
+    return;
+  }
+  body.innerHTML = lista.map(p => `
+    <tr>
+      <td style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.8rem;">${p.codigo}</td>
+      <td>${p.descripcion}</td>
+      <td><span class="badge ${p.categoria}">${nombreCategoria(p.categoria)}</span></td>
+      <td><button class="row-del" data-codigo="${p.codigo}">Eliminar</button></td>
+    </tr>`).join('');
+
+  body.querySelectorAll('.row-del').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      if(!confirm('¿Eliminar este producto del catálogo?')) return;
+      await eliminarProductoRemoto(b.dataset.codigo);
+    });
+  });
+}
+
+/* ======================= RESPONSABLES ======================= */
+document.getElementById('btnAgregarResponsable').addEventListener('click', async ()=>{
+  const input = document.getElementById('nuevoResponsable');
+  const nombre = input.value.trim();
+  if(!nombre){ showToast('Escribe un nombre'); return; }
+  if(responsables.some(r => r.nombre.toLowerCase() === nombre.toLowerCase())){
+    showToast('Ese nombre ya está en la lista'); return;
+  }
+  await agregarResponsableRemoto(nombre);
+  input.value = '';
+  showToast('Responsable agregado');
+});
+
+function renderResponsables(){
+  const cont = document.getElementById('listaResponsables');
+  if(!cont) return;
+  if(!responsables.length){
+    cont.innerHTML = '<p class="empty-state">Todavía no has agregado responsables.</p>';
+    return;
+  }
+  cont.innerHTML = `<div class="chip-list">${responsables.map(r => `
+    <span class="chip-item">${r.nombre}<button type="button" data-id="${r.id}" title="Eliminar">×</button></span>
+  `).join('')}</div>`;
+  cont.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      await eliminarResponsableRemoto(b.dataset.id);
+    });
+  });
+}
+
+function renderDatalistResponsables(){
+  const dl = document.getElementById('datalistResponsables');
+  if(!dl) return;
+  dl.innerHTML = responsables.map(r => `<option value="${r.nombre.replace(/"/g,'&quot;')}"></option>`).join('');
+}
+
+/* ======================= LISTA DIARIA (por sitio, sin separar categoría) ======================= */
+document.getElementById('listaFecha').value = hoyISO();
+document.getElementById('listaFecha').addEventListener('change', renderListaDiaria);
+
+function renderListaDiaria(){
+  const cont = document.getElementById('listaDiariaContenido');
+  if(!cont) return;
+  const fecha = document.getElementById('listaFecha').value || hoyISO();
+  const deEseDia = movimientos
+    .filter(m => m.fechaHora.slice(0,10) === fecha)
+    .slice()
+    .sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+
+  if(deEseDia.length === 0){
+    cont.innerHTML = `<p class="empty-state">No hay salidas registradas el ${fechaLegible(fecha + 'T00:00:00')}.</p>`;
+    return;
+  }
+
+  const porSitio = {maternidad: [], crecimiento: []};
+  deEseDia.forEach(m => { (porSitio[m.bodega] = porSitio[m.bodega] || []).push(m); });
+
+  cont.innerHTML = ['maternidad','crecimiento'].filter(b => porSitio[b] && porSitio[b].length).map(b => `
+    <div class="report-section">
+      <h3><span class="badge ${b}">${nombreBodega(b)}</span></h3>
+      <table class="detalle">
+        <thead><tr><th>Hora</th><th>Producto</th><th>Categoría</th><th>Cant.</th><th>Entregado a</th></tr></thead>
+        <tbody>
+          ${porSitio[b].map(m => `
+            <tr>
+              <td>${horaLegible(m.fechaHora)}</td>
+              <td>${m.descripcion}</td>
+              <td><span class="badge ${m.categoria}">${nombreCategoria(m.categoria)}</span></td>
+              <td>${m.cantidad}</td>
+              <td>${m.responsable || '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+}
+
+document.getElementById('btnExportCsvLista').addEventListener('click', ()=>{
+  const fecha = document.getElementById('listaFecha').value || hoyISO();
+  const deEseDia = movimientos
+    .filter(m => m.fechaHora.slice(0,10) === fecha)
+    .slice()
+    .sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+  if(deEseDia.length === 0){ showToast('No hay datos para exportar'); return; }
+  let filas = [['Hora','Bodega','Producto','Categoria','Cantidad','Entregado a']];
+  deEseDia.forEach(m=>{
+    filas.push([horaLegible(m.fechaHora), nombreBodega(m.bodega), m.descripcion, nombreCategoria(m.categoria), m.cantidad, m.responsable || '']);
+  });
+  const csv = filas.map(f => f.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `lista_diaria_${fecha}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ======================= INICIO ======================= */
+renderMovimientosHoy();
+renderCatalogo();
+renderResponsables();
+renderListaDiaria();
+</script>
+</body>
+</html>
