@@ -6,6 +6,8 @@
 <title>Control de Bodega — Insumos y Medicina</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
     --bg:#F6F4EE;
@@ -53,6 +55,30 @@
     margin:0 0 14px 0;
     font-size:0.8rem;
     color:#C7CFC2;
+  }
+  .header-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .modo-btn{
+    flex:0 0 auto;
+    background:rgba(255,255,255,0.1);
+    color:#F3F1E9;
+    border:1px solid rgba(255,255,255,0.25);
+    border-radius:20px;
+    padding:7px 12px;
+    font-size:0.78rem;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .modo-btn.activo{
+    background:#C97B2E;
+    border-color:#C97B2E;
+    color:#231705;
   }
   nav.tabs{
     display:flex;
@@ -446,8 +472,13 @@
 <body>
 
 <header class="app-header">
-  <h1>Control de Bodega</h1>
-  <p class="sub">Insumos y medicina — Granja Maternidad · Granja Crecimiento</p>
+  <div class="header-top">
+    <div>
+      <h1>Control de Bodega</h1>
+      <p class="sub">Insumos y medicina — Granja Maternidad · Granja Crecimiento</p>
+    </div>
+    <button id="btnModoAdmin" class="modo-btn">🔒 Usuario</button>
+  </div>
   <nav class="tabs">
     <button data-tab="registro" class="active">Registro</button>
     <button data-tab="reporte">Reporte</button>
@@ -522,7 +553,10 @@
     <div class="panel">
       <div class="toolbar">
         <h2 style="margin:0;">Resultado del día</h2>
-        <button class="btn-secondary" id="btnExportCsvLista">Exportar CSV</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-secondary" id="btnExportCsvLista">Exportar CSV</button>
+          <button class="btn-secondary" id="btnExportPdfLista">Exportar PDF</button>
+        </div>
       </div>
       <div id="listaDiariaContenido"></div>
     </div>
@@ -561,7 +595,10 @@
     <div class="panel" id="reportePanel" style="display:none;">
       <div class="toolbar">
         <h2 style="margin:0;">Resultado</h2>
-        <button class="btn-secondary" id="btnExportCsv">Exportar CSV</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-secondary" id="btnExportCsv">Exportar CSV</button>
+          <button class="btn-secondary" id="btnExportPdf">Exportar PDF</button>
+        </div>
       </div>
       <div id="reporteResumenPendientes"></div>
       <div id="reporteContenido"></div>
@@ -572,17 +609,19 @@
   <section id="tab-productos" style="display:none;">
     <div class="panel">
       <h2>Responsables / personas autorizadas</h2>
-      <div class="new-product-form" style="grid-template-columns:2fr auto;">
-        <div class="field" style="margin-bottom:0;">
-          <label for="nuevoResponsable">Nombre</label>
-          <input type="text" id="nuevoResponsable" placeholder="Nombre de la persona">
+      <div id="panelNuevoResponsable" style="display:none;">
+        <div class="new-product-form" style="grid-template-columns:2fr auto;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="nuevoResponsable">Nombre</label>
+            <input type="text" id="nuevoResponsable" placeholder="Nombre de la persona">
+          </div>
+          <button class="btn-secondary" id="btnAgregarResponsable" style="height:45px;">Agregar</button>
         </div>
-        <button class="btn-secondary" id="btnAgregarResponsable" style="height:45px;">Agregar</button>
       </div>
       <div id="listaResponsables"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="panelNuevoProducto" style="display:none;">
       <h2>Agregar producto</h2>
       <div class="cat-choice">
         <button type="button" id="catInsBtn" class="sel-ins">+ Nuevo insumo</button>
@@ -640,7 +679,8 @@ const db = firebase.firestore();
 const COL = {
   productos: 'bodega_productos',
   movimientos: 'bodega_movimientos',
-  responsables: 'bodega_responsables'
+  responsables: 'bodega_responsables',
+  config: 'bodega_config'
 };
 
 function categoriaDeCodigo(codigo){
@@ -656,6 +696,52 @@ let responsables = [];
 let productosListos = false;
 let movimientosListos = false;
 let responsablesListos = false;
+
+let esAdmin = sessionStorage.getItem('bodega_admin') === '1';
+let superPin = '1234';
+
+// --- Configuración: PIN de super usuario (administrador) ---
+db.collection(COL.config).doc('auth').onSnapshot((snap)=>{
+  if(snap.exists){
+    if(snap.data().pin) superPin = snap.data().pin;
+  } else {
+    db.collection(COL.config).doc('auth').set({pin: superPin});
+  }
+}, (err)=>{ console.error('config', err); });
+
+function actualizarModoUI(){
+  const btn = document.getElementById('btnModoAdmin');
+  btn.textContent = esAdmin ? '🔓 Administrador' : '🔒 Usuario';
+  btn.classList.toggle('activo', esAdmin);
+  const panelNuevoProducto = document.getElementById('panelNuevoProducto');
+  if(panelNuevoProducto) panelNuevoProducto.style.display = esAdmin ? 'block' : 'none';
+  const panelNuevoResponsable = document.getElementById('panelNuevoResponsable');
+  if(panelNuevoResponsable) panelNuevoResponsable.style.display = esAdmin ? 'block' : 'none';
+  refrescarVistaActiva();
+  renderCatalogo();
+  renderResponsables();
+}
+
+document.getElementById('btnModoAdmin').addEventListener('click', ()=>{
+  if(esAdmin){
+    if(confirm('¿Salir del modo administrador?')){
+      esAdmin = false;
+      sessionStorage.removeItem('bodega_admin');
+      actualizarModoUI();
+    }
+  } else {
+    const intento = prompt('PIN de administrador:');
+    if(intento === null) return;
+    if(intento === superPin){
+      esAdmin = true;
+      sessionStorage.setItem('bodega_admin','1');
+      actualizarModoUI();
+      showToast('Modo administrador activado');
+    } else {
+      showToast('PIN incorrecto');
+    }
+  }
+});
 
 function refrescarVistaActiva(){
   if(!productosListos || !movimientosListos) return;
@@ -888,7 +974,7 @@ function renderMovimientosHoy(){
   cont.innerHTML = `
     <div class="table-wrap">
     <table class="detalle">
-      <thead><tr><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant.</th><th>Bodega</th><th>Entregado a</th><th>Observación</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant.</th><th>Bodega</th><th>Entregado a</th><th>Observación</th>${esAdmin ? '<th></th>' : ''}</tr></thead>
       <tbody>
         ${deHoy.map(m => `
           <tr>
@@ -898,8 +984,10 @@ function renderMovimientosHoy(){
             <td>${m.cantidad}</td>
             <td><span class="badge ${m.bodega}">${nombreBodega(m.bodega)}</span></td>
             <td>${m.responsable || '—'}</td>
-            <td><input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}"></td>
-            <td><button class="row-del" data-id="${m.id}">Eliminar</button></td>
+            <td>${esAdmin
+              ? `<input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}">`
+              : (m.observacion ? m.observacion : '—')}</td>
+            ${esAdmin ? `<td><button class="row-del" data-id="${m.id}">Eliminar</button></td>` : ''}
           </tr>`).join('')}
       </tbody>
     </table>
@@ -1024,9 +1112,13 @@ function renderReporte(){
             <td>${m.cantidad}</td>
             <td>${m.responsable || '—'}</td>
             <td style="text-align:center;">
-              <input type="checkbox" class="chk-descargado" data-id="${m.id}" ${m.descargado ? 'checked' : ''}>
+              ${esAdmin
+                ? `<input type="checkbox" class="chk-descargado" data-id="${m.id}" ${m.descargado ? 'checked' : ''}>`
+                : (m.descargado ? '✅' : '—')}
             </td>
-            <td><input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}"></td>
+            <td>${esAdmin
+              ? `<input type="text" class="obs-input" data-id="${m.id}" placeholder="Observación" value="${(m.observacion || '').replace(/"/g,'&quot;')}">`
+              : (m.observacion ? m.observacion : '—')}</td>
           </tr>`).join('');
         return `
           <tr><td colspan="5" style="padding-top:14px; padding-bottom:2px; font-weight:700;">${it.descripcion}</td></tr>
@@ -1089,6 +1181,43 @@ document.getElementById('btnExportCsv').addEventListener('click', ()=>{
   a.download = `reporte_bodega_${ultimoReporte.desde}_a_${ultimoReporte.hasta}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnExportPdf').addEventListener('click', ()=>{
+  if(!ultimoReporte) return;
+  const idsSet = new Set(ultimoReporte.ids);
+  const lista = movimientos.filter(m => idsSet.has(m.id))
+    .slice().sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+  if(lista.length === 0){ showToast('No hay datos para exportar'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14);
+  doc.text('Descargas de Bodega — Insumos y Medicina', 14, 15);
+  doc.setFontSize(10);
+  const filtroBodegaTxt = ultimoReporte.bodegaFiltro === 'todas' ? 'Todas' : nombreBodega(ultimoReporte.bodegaFiltro);
+  doc.text(`Del ${fechaLegible(ultimoReporte.desde)} al ${fechaLegible(ultimoReporte.hasta)} — Bodega: ${filtroBodegaTxt}`, 14, 22);
+
+  const body = lista.map(m => [
+    fechaLegible(m.fechaHora),
+    nombreBodega(m.bodega),
+    nombreCategoria(m.categoria),
+    m.descripcion,
+    String(m.cantidad),
+    m.responsable || '—',
+    m.descargado ? 'Sí' : 'No',
+    m.observacion || ''
+  ]);
+
+  doc.autoTable({
+    startY: 28,
+    head: [['Fecha','Bodega','Categoría','Producto','Cant.','Entregado a','Descargado','Observación']],
+    body,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [47,82,51] }
+  });
+
+  doc.save(`descargas_bodega_${ultimoReporte.desde}_a_${ultimoReporte.hasta}.pdf`);
 });
 
 /* ======================= PRODUCTOS / CATÁLOGO ======================= */
@@ -1160,7 +1289,7 @@ function renderCatalogo(){
       <td style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.8rem;">${p.codigo}</td>
       <td>${p.descripcion}</td>
       <td><span class="badge ${p.categoria}">${nombreCategoria(p.categoria)}</span></td>
-      <td><button class="row-del" data-codigo="${p.codigo}">Eliminar</button></td>
+      <td>${esAdmin ? `<button class="row-del" data-codigo="${p.codigo}">Eliminar</button>` : ''}</td>
     </tr>`).join('');
 
   body.querySelectorAll('.row-del').forEach(b=>{
@@ -1192,7 +1321,7 @@ function renderResponsables(){
     return;
   }
   cont.innerHTML = `<div class="chip-list">${responsables.map(r => `
-    <span class="chip-item">${r.nombre}<button type="button" data-id="${r.id}" title="Eliminar">×</button></span>
+    <span class="chip-item">${r.nombre}${esAdmin ? `<button type="button" data-id="${r.id}" title="Eliminar">×</button>` : ''}</span>
   `).join('')}</div>`;
   cont.querySelectorAll('button[data-id]').forEach(b=>{
     b.addEventListener('click', async ()=>{
@@ -1270,7 +1399,43 @@ document.getElementById('btnExportCsvLista').addEventListener('click', ()=>{
   URL.revokeObjectURL(url);
 });
 
+document.getElementById('btnExportPdfLista').addEventListener('click', ()=>{
+  const fecha = document.getElementById('listaFecha').value || hoyISO();
+  const deEseDia = movimientos
+    .filter(m => m.fechaHora.slice(0,10) === fecha)
+    .slice()
+    .sort((a,z)=> a.fechaHora.localeCompare(z.fechaHora));
+  if(deEseDia.length === 0){ showToast('No hay datos para exportar'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14);
+  doc.text('Lista diaria de salidas de Bodega', 14, 15);
+  doc.setFontSize(10);
+  doc.text(`Fecha: ${fechaLegible(fecha + 'T00:00:00')}`, 14, 22);
+
+  const body = deEseDia.map(m => [
+    horaLegible(m.fechaHora),
+    nombreBodega(m.bodega),
+    m.descripcion,
+    nombreCategoria(m.categoria),
+    String(m.cantidad),
+    m.responsable || '—'
+  ]);
+
+  doc.autoTable({
+    startY: 28,
+    head: [['Hora','Bodega','Producto','Categoría','Cant.','Entregado a']],
+    body,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [47,82,51] }
+  });
+
+  doc.save(`lista_diaria_${fecha}.pdf`);
+});
+
 /* ======================= INICIO ======================= */
+actualizarModoUI();
 renderMovimientosHoy();
 renderCatalogo();
 renderResponsables();
